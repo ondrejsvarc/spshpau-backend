@@ -1,0 +1,18 @@
+[submodule "services/config"]
+	path = services/config
+	url = https://github.com/ondrejsvarc/spshpau-config.git
+[submodule "services/gateway"]
+	path = services/gateway
+	url = https://github.com/ondrejsvarc/spshpau-gateway.git
+[submodule "services/chatservice"]
+	path = services/chatservice
+	url = https://github.com/ondrejsvarc/spshpau-chatservice.git
+[submodule "services/userservice"]
+	path = services/userservice
+	url = https://github.com/ondrejsvarc/spshpau-userservice.git
+[submodule "services/discovery"]
+	path = services/discovery
+	url = https://github.com/ondrejsvarc/spshpau-discovery.git
+[submodule "services/projectservice"]
+	path = services/projectservice
+	url = https://github.com/ondrejsvarc/spshpau-projectservice.git
