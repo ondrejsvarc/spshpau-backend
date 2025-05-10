@@ -1,0 +1,1673 @@
+openapi: 3.0.3
+info:
+  title: SPSHPAU Backend API
+  version: v0.1.1-ALPHA
+  description: API specification for the SPSHPAU microservices ecosystem, accessed via the API Gateway.
+servers:
+  - url: http://localhost:8081/api/v1
+    description: Local development server (via API Gateway)
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    # --- ENUMS ---
+    ExperienceLevel:
+      type: string
+      enum: [BEGINNER, INTERMEDIATE, ADVANCED, EXPERT]
+      description: User's experience level.
+    InteractionStatus:
+      type: string
+      enum: [NONE, CONNECTION_ACCEPTED, PENDING_OUTGOING, PENDING_INCOMING, BLOCKED_BY_YOU, BLOCKED_BY_OTHER, BLOCKED_MUTUAL]
+      description: Interaction status between two users.
+    TaskStatus:
+      type: string
+      enum: [TODO, IN_PROGRESS, DONE, WAITING, REVIEW, BLOCKED]
+      description: Status of a project task.
+    MessageStatus: # From ChatService
+      type: string
+      enum: [SENT, DELIVERED, READ]
+      description: Status of a chat message.
+    UserStatus: # From ChatService User model
+      type: string
+      enum: [ONLINE, OFFLINE]
+      description: Online status of a user in the chat service.
+
+    # --- SHARED UTILITY SCHEMAS ---
+    PageableObject:
+      type: object
+      properties:
+        offset:
+          type: integer
+          format: int64
+        sort:
+          $ref: '#/components/schemas/SortObject'
+        pageNumber:
+          type: integer
+        pageSize:
+          type: integer
+        paged:
+          type: boolean
+        unpaged:
+          type: boolean
+      description: Pagination information as returned by Spring Data Pageable.
+
+    SortObject:
+      type: object
+      properties:
+        empty:
+          type: boolean
+        sorted:
+          type: boolean
+        unsorted:
+          type: boolean
+      description: Sorting information.
+
+    # --- USER SERVICE DTOS ---
+    UserDetailDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        email: { type: string, format: email }
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        active: { type: boolean }
+        artistProfile: { $ref: '#/components/schemas/ArtistProfileDetailDto', nullable: true }
+        producerProfile: { $ref: '#/components/schemas/ProducerProfileDetailDto', nullable: true }
+      description: Detailed information about a user, including their profiles.
+
+    UserSummaryDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        artistProfile: { $ref: '#/components/schemas/ArtistProfileSummaryDto', nullable: true }
+        producerProfile: { $ref: '#/components/schemas/ProducerProfileSummaryDto', nullable: true }
+      description: Summary information about a user from UserService.
+
+    ArtistProfileDetailDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: "Same as the User's ID." }
+        availability: { type: boolean }
+        bio: { type: string, nullable: true }
+        experienceLevel: { $ref: '#/components/schemas/ExperienceLevel' }
+        genres: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' } }
+        skills: { type: array, items: { $ref: '#/components/schemas/SkillSummaryDto' } }
+      description: Detailed information about an artist's profile.
+
+    ArtistProfileSummaryDto:
+      type: object
+      properties:
+        availability: { type: boolean }
+        experienceLevel: { $ref: '#/components/schemas/ExperienceLevel' }
+      description: Summary of an artist's profile.
+
+    ProducerProfileDetailDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid, description: "Same as the User's ID." }
+        availability: { type: boolean }
+        bio: { type: string, nullable: true }
+        experienceLevel: { $ref: '#/components/schemas/ExperienceLevel' }
+        genres: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' } }
+      description: Detailed information about a producer's profile.
+
+    ProducerProfileSummaryDto:
+      type: object
+      properties:
+        availability: { type: boolean }
+        experienceLevel: { $ref: '#/components/schemas/ExperienceLevel' }
+      description: Summary of a producer's profile.
+
+    ProfileUpdateDto:
+      type: object
+      properties:
+        availability: { type: boolean, nullable: true }
+        bio: { type: string, nullable: true }
+        experienceLevel: { $ref: '#/components/schemas/ExperienceLevel', nullable: true }
+      description: DTO for updating profile information (artist or producer).
+
+    GenreDto:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 50, example: "Synthwave" }
+      description: DTO for creating a new genre.
+
+    GenreSummaryDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "Rock" }
+      description: Summary information about a genre.
+
+    SkillDto:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, maxLength: 50, example: "Piano" }
+      description: DTO for creating a new skill.
+
+    SkillSummaryDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string, example: "Guitar" }
+      description: Summary information about a skill.
+
+    LocationUpdateRequest:
+      type: object
+      properties:
+        location: { type: string, example: "Berlin, Germany" }
+      description: DTO for updating a user's location.
+
+    UserSearchCriteria: # Represented as query parameters in the paths section
+      type: object
+      description: Criteria for searching users. Implemented as individual query parameters.
+      properties:
+        searchTerm: { type: string, nullable: true }
+        # Other fields are listed as parameters in the /users/search/filter endpoint
+
+    # Generic Page DTO for UserService UserSummaryDto
+    PageUserSummaryDto_UserService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/UserSummaryDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of UserSummaryDto from UserService.
+
+    # Generic Page DTO for GenreSummaryDto
+    PageGenreSummaryDto_UserService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of GenreSummaryDto.
+
+    # Generic Page DTO for SkillSummaryDto
+    PageSkillSummaryDto_UserService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/SkillSummaryDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of SkillSummaryDto.
+
+    # PageUser_UserService (for getMyBlockedUsers)
+    PageUser_UserService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/UserDetailDto' } } # Returns Page<User> from controller
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of full User objects (from getMyBlockedUsers).
+
+    # --- PROJECT SERVICE DTOS ---
+    ProjectCreateDto:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 100, example: "My New Album" }
+        description: { type: string, maxLength: 5000, nullable: true, example: "A collection of synthwave tracks." }
+      description: DTO for creating a new project.
+
+    ProjectUpdateDto:
+      type: object
+      properties:
+        title: { type: string, minLength: 3, maxLength: 100, nullable: true }
+        description: { type: string, maxLength: 5000, nullable: true }
+      description: DTO for updating an existing project.
+
+    ProjectResponseDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        owner: { $ref: '#/components/schemas/UserSummaryDto_ProjectService' } # Uses its own UserSummaryDto version
+        collaborators: { type: array, items: { $ref: '#/components/schemas/UserSummaryDto_ProjectService' } }
+      description: Detailed information about a project.
+
+    UserSummaryDto_ProjectService: # Project service has its own UserSummaryDto
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string, nullable: true } # username can be null in SimpleUser
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        location: { type: string, nullable: true }
+        artistProfile: { type: object, nullable: true, description: "Usually null for SimpleUser as it's not part of ProjectService's SimpleUser" }
+        producerProfile: { type: object, nullable: true, description: "Usually null for SimpleUser as it's not part of ProjectService's SimpleUser" }
+      description: Summary information about a user, as used by ProjectService (based on SimpleUser).
+
+    TaskCreateDto:
+      type: object
+      required: [title, status]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 255 }
+        description: { type: string, maxLength: 5000, nullable: true }
+        dueDate: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        assignedUserId: { type: string, format: uuid, nullable: true }
+      description: DTO for creating a new task.
+
+    TaskUpdateDto:
+      type: object
+      properties:
+        title: { type: string, minLength: 3, maxLength: 255, nullable: true }
+        description: { type: string, maxLength: 5000, nullable: true }
+        dueDate: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/TaskStatus', nullable: true }
+        assignedUserId: { type: string, format: uuid, nullable: true }
+      description: DTO for updating an existing task.
+
+    TaskResponseDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        createdAt: { type: string, format: date-time }
+        dueDate: { type: string, format: date-time, nullable: true }
+        status: { $ref: '#/components/schemas/TaskStatus' }
+        projectId: { type: string, format: uuid }
+        assignedUser: { $ref: '#/components/schemas/UserSummaryDto_ProjectService', nullable: true }
+      description: Detailed information about a project task.
+
+    MilestoneCreateDto:
+      type: object
+      required: [title]
+      properties:
+        title: { type: string, minLength: 3, maxLength: 255 }
+        description: { type: string, maxLength: 5000, nullable: true }
+        dueDate: { type: string, format: date-time, nullable: true }
+      description: DTO for creating a new milestone.
+
+    MilestoneUpdateDto:
+      type: object
+      properties:
+        title: { type: string, minLength: 3, maxLength: 255, nullable: true }
+        description: { type: string, maxLength: 5000, nullable: true }
+        dueDate: { type: string, format: date-time, nullable: true }
+      description: DTO for updating an existing milestone.
+
+    MilestoneResponseDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        title: { type: string }
+        description: { type: string, nullable: true }
+        dueDate: { type: string, format: date-time, nullable: true }
+        projectId: { type: string, format: uuid }
+      description: Detailed information about a project milestone.
+
+    BudgetCreateDto:
+      type: object
+      required: [currency, totalAmount]
+      properties:
+        currency: { type: string, example: "USD" }
+        totalAmount: { type: number, format: float, exclusiveMinimum: false, example: 1000.00 }
+      description: DTO for creating a project budget.
+
+    BudgetUpdateDto:
+      type: object
+      properties:
+        currency: { type: string, nullable: true }
+        totalAmount: { type: number, format: float, exclusiveMinimum: false, nullable: true }
+      description: DTO for updating a project budget.
+
+    BudgetResponseDto:
+      type: object
+      properties:
+        projectId: { type: string, format: uuid }
+        currency: { type: string }
+        totalAmount: { type: number, format: float }
+        spentAmount: { type: number, format: float }
+        remainingAmount: { type: number, format: float }
+        expenses: { type: array, items: { $ref: '#/components/schemas/ExpenseResponseDto' } }
+      description: Detailed information about a project budget.
+
+    RemainingBudgetDto:
+      type: object
+      properties:
+        totalAmount: { type: number, format: float }
+        spentAmount: { type: number, format: float }
+        remainingAmount: { type: number, format: float }
+        currency: { type: string }
+      description: Summary of remaining budget for a project.
+
+    ExpenseCreateDto:
+      type: object
+      required: [amount, date, comment]
+      properties:
+        amount: { type: number, format: float, exclusiveMinimum: false }
+        date: { type: string, format: date-time } # Representing java.util.Date
+        comment: { type: string }
+      description: DTO for creating a new budget expense.
+
+    ExpenseUpdateDto:
+      type: object
+      properties:
+        amount: { type: number, format: float, exclusiveMinimum: false, nullable: true }
+        date: { type: string, format: date-time, nullable: true }
+        comment: { type: string, nullable: true }
+      description: DTO for updating a budget expense.
+
+    ExpenseResponseDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        amount: { type: number, format: float }
+        date: { type: string, format: date-time }
+        comment: { type: string, nullable: true }
+        budgetId: { type: string, format: uuid, description: "Project ID" }
+      description: Detailed information about a budget expense.
+
+    ProjectFileResponseDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        originalFilename: { type: string }
+        contentType: { type: string }
+        fileSize: { type: integer, format: int64 }
+        uploadTimestamp: { type: string, format: date-time }
+        description: { type: string, nullable: true }
+        uploadedBy: { $ref: '#/components/schemas/UserSummaryDto_ProjectService' }
+        s3ObjectKey: { type: string }
+        s3VersionId: { type: string }
+        projectId: { type: string, format: uuid }
+      description: Metadata for a project file.
+
+    FileDownloadDto:
+      type: object
+      properties:
+        downloadUrl: { type: string, format: url }
+        originalFilename: { type: string }
+      description: DTO containing a pre-signed download URL for a file.
+
+    # Generic Page DTO for ProjectResponseDto
+    PageProjectResponseDto_ProjectService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/ProjectResponseDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of ProjectResponseDto.
+
+    # Generic Page DTO for UserSummaryDto_ProjectService
+    PageUserSummaryDto_ProjectService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/UserSummaryDto_ProjectService' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of UserSummaryDto from ProjectService.
+
+    # Generic Page DTO for TaskResponseDto
+    PageTaskResponseDto_ProjectService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/TaskResponseDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of TaskResponseDto.
+
+    # Generic Page DTO for MilestoneResponseDto
+    PageMilestoneResponseDto_ProjectService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/MilestoneResponseDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of MilestoneResponseDto.
+
+    # Generic Page DTO for ExpenseResponseDto
+    PageExpenseResponseDto_ProjectService:
+      type: object
+      properties:
+        content: { type: array, items: { $ref: '#/components/schemas/ExpenseResponseDto' } }
+        pageable: { $ref: '#/components/schemas/PageableObject' }
+        totalPages: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        last: { type: boolean }
+        first: { type: boolean }
+        size: { type: integer }
+        number: { type: integer }
+        sort: { $ref: '#/components/schemas/SortObject' }
+        numberOfElements: { type: integer }
+        empty: { type: boolean }
+      description: Paginated list of ExpenseResponseDto.
+
+    # --- CHAT SERVICE REST DTOS ---
+    ChatServiceUserDto:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        firstName: { type: string, nullable: true }
+        lastName: { type: string, nullable: true }
+        status: { $ref: '#/components/schemas/UserStatus' }
+      description: User representation within the Chat Service's REST API.
+
+    ChatSummaryDto:
+      type: object
+      properties:
+        chatPartner: { $ref: '#/components/schemas/ChatServiceUserDto' }
+        chatId: { type: string, format: uuid, nullable: true }
+        unreadCount: { type: integer, format: int64 }
+      description: Summary of a chat with a partner, including unread message count.
+
+    ChatMessageDto: # For the REST endpoint /messages/{senderId}/{recipientId}
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        chatId: { type: string, format: uuid }
+        senderId: { type: string, format: uuid }
+        recipientId: { type: string, format: uuid }
+        content: { type: string }
+        status: { $ref: '#/components/schemas/MessageStatus' }
+        sentAt: { type: string, format: "date-time" }
+        deliveredAt: { type: string, format: "date-time", nullable: true }
+        readAt: { type: string, format: "date-time", nullable: true }
+      description: Represents a chat message retrieved via REST API.
+
+    ErrorResponse:
+      type: object
+      properties:
+        timestamp: { type: string, format: date-time }
+        status: { type: integer }
+        error: { type: string }
+        message: { type: string }
+        path: { type: string }
+      description: Standard error response structure.
+
+  responses:
+    UnauthorizedError:
+      description: Unauthorized. Invalid or missing authentication token.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' }, example: { timestamp: "2025-05-10T15:00:00.000Z", status: 401, error: "Unauthorized", message: "Full authentication is required to access this resource", path: "/api/v1/users/me" }}}
+    ForbiddenError:
+      description: Forbidden. User does not have the necessary permissions.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' }, example: { timestamp: "2025-05-10T15:00:00.000Z", status: 403, error: "Forbidden", message: "Access Denied", path: "/api/v1/genres" }}}
+    NotFoundError:
+      description: Resource not found.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' }, example: { timestamp: "2025-05-10T15:00:00.000Z", status: 404, error: "Not Found", message: "User not found with ID: xxxxx", path: "/api/v1/users/search/id/xxxxx" }}}
+    ConflictError:
+      description: Conflict. The request could not be completed due to a conflict with the current state of the resource.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' }, example: { timestamp: "2025-05-10T15:00:00.000Z", status: 409, error: "Conflict", message: "Genre with name 'Rock' already exists.", path: "/api/v1/genres" }}}
+    InternalServerError:
+      description: Internal Server Error.
+      content: { application/json: { schema: { $ref: '#/components/schemas/ErrorResponse' }, example: { timestamp: "2025-05-10T15:00:00.000Z", status: 500, error: "Internal Server Error", message: "An unexpected error occurred.", path: "/api/v1/some/endpoint" }}}
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Util
+    description: Utility and health check endpoints.
+  - name: UserService - Users
+    description: User account management and information.
+  - name: UserService - Artist Profiles
+    description: Artist-specific profile management.
+  - name: UserService - Producer Profiles
+    description: Producer-specific profile management.
+  - name: UserService - Genres
+    description: Management of musical genres (Admin heavy).
+  - name: UserService - Skills
+    description: Management of musical skills (Admin heavy).
+  - name: UserService - Interactions
+    description: User connections, blocking, and relationship status.
+  - name: ProjectService - Projects
+    description: Project creation, collaboration, and lifecycle management.
+  - name: ProjectService - Tasks
+    description: Task management within projects.
+  - name: ProjectService - Milestones
+    description: Milestone management for projects.
+  - name: ProjectService - Budget & Expenses
+    description: Budget and expense tracking for projects.
+  - name: ProjectService - Files
+    description: File management for projects (upload, download, versioning).
+  - name: ChatService - REST API
+    description: RESTful endpoints for chat user lists and summaries.
+
+paths:
+  # --- UTILITY ENDPOINTS ---
+  /util/ping:
+    get:
+      tags: [Util]
+      summary: Ping endpoint for service health check.
+      description: Publicly accessible. Returns "Pong!" from the underlying service.
+      responses:
+        '200': { description: Service is responsive., content: { text/plain: { schema: { type: string, example: Pong! }}}}
+  /util/auth:
+    get:
+      tags: [Util]
+      summary: Test authentication token validity.
+      description: Requires a valid JWT. Returns a success message if the token is valid.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: Authentication token is valid., content: { text/plain: { schema: { type: string, example: "You have sent a valid authentication token!" }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+
+  # --- USER SERVICE - USER ENDPOINTS ---
+  /users/me:
+    get:
+      tags: [UserService - Users]
+      summary: Get current authenticated user's details.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: User details., content: { application/json: { schema: { $ref: '#/components/schemas/UserDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { description: "User not found (may trigger sync if first login)." }
+  /users/me/sync:
+    put:
+      tags: [UserService - Users]
+      summary: Synchronize current user's data from Keycloak.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: User synced., content: { application/json: { schema: { $ref: '#/components/schemas/UserDetailDto' }}}}
+        '400': { description: "Bad Request (e.g. token missing claims)" }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /users/me/location:
+    put:
+      tags: [UserService - Users]
+      summary: Update current user's location.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/LocationUpdateRequest' }}}}
+      responses:
+        '200': { description: Location updated., content: { application/json: { schema: { $ref: '#/components/schemas/UserDetailDto' }}}}
+        '400': { description: "Bad Request (e.g. invalid location)" }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /users/search/username/{username}:
+    get:
+      tags: [UserService - Users]
+      summary: Get user details by username.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: username, in: path, required: true, schema: { type: string }}]
+      responses:
+        '200': { description: User details., content: { application/json: { schema: { $ref: '#/components/schemas/UserDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /users/search/id/{userId}:
+    get:
+      tags: [UserService - Users]
+      summary: Get user summary by ID.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: User summary., content: { application/json: { schema: { $ref: '#/components/schemas/UserSummaryDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /users/{userId}/deactivate:
+    put:
+      tags: [UserService - Users]
+      summary: Deactivate a user (Admin only).
+      description: Requires 'client_admin' role.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: User deactivated.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /users/{userId}/reactivate:
+    put:
+      tags: [UserService - Users]
+      summary: Reactivate a user (Admin only).
+      description: Requires 'client_admin' role.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: userId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: User reactivated.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /users/search/filter:
+    get:
+      tags: [UserService - Users]
+      summary: Search and filter active users.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: searchTerm, in: query, required: false, schema: { type: string }}
+        - { name: genreIds, in: query, required: false, style: form, explode: false, schema: { type: array, items: { type: string, format: uuid }}}
+        - { name: skillIds, in: query, required: false, style: form, explode: false, schema: { type: array, items: { type: string, format: uuid }}}
+        - { name: hasArtist, in: query, required: false, schema: { type: boolean }}
+        - { name: hasProducer, in: query, required: false, schema: { type: boolean }}
+        - { name: artistExperienceLevel, in: query, required: false, schema: { $ref: '#/components/schemas/ExperienceLevel' }}
+        - { name: artistAvailability, in: query, required: false, schema: { type: boolean }}
+        - { name: producerExperienceLevel, in: query, required: false, schema: { $ref: '#/components/schemas/ExperienceLevel' }}
+        - { name: producerAvailability, in: query, required: false, schema: { type: boolean }}
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 10 }}
+        - { name: sort, in: query, schema: { type: string, example: "username,asc" }}
+      responses:
+        '200': { description: Search results., content: { application/json: { schema: { $ref: '#/components/schemas/PageUserSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /users/matches:
+    get:
+      tags: [UserService - Users]
+      summary: Find potential collaborators for the current user.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 10 }}
+        - { name: sort, in: query, schema: { type: string, description: "Usually sorted by match score implicitly by backend."}}
+      responses:
+        '200': { description: Matched users., content: { application/json: { schema: { $ref: '#/components/schemas/PageUserSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' , description: "User not found or no profile to base matches on."}
+
+  # --- UserService - Artist Profile Endpoints ---
+  /users/artist-profile/me:
+    get:
+      tags: [UserService - Artist Profiles]
+      summary: Get current user's artist profile.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: Artist profile found., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Artist profile not found."}
+    put:
+      tags: [UserService - Artist Profiles]
+      summary: Create or update current user's artist profile.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileUpdateDto' }}}}
+      responses:
+        '200': { description: Profile created/updated., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '400': { description: "Bad Request (e.g. missing experience level)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User not found."}
+    patch:
+      tags: [UserService - Artist Profiles]
+      summary: Partially update current user's artist profile.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileUpdateDto' }}}}
+      responses:
+        '200': { description: Profile patched., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile not found."}
+  /users/artist-profile/me/genres:
+    get:
+      tags: [UserService - Artist Profiles]
+      summary: Get genres for current user's artist profile.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: Genres list., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile not found."}
+  /users/artist-profile/me/genres/add/{genreId}:
+    post:
+      tags: [UserService - Artist Profiles]
+      summary: Add a genre to current user's artist profile.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: genreId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Genre added., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile or Genre not found."}
+        '409': { $ref: '#/components/responses/ConflictError', description: "Genre limit exceeded."}
+  /users/artist-profile/me/genres/remove/{genreId}:
+    delete:
+      tags: [UserService - Artist Profiles]
+      summary: Remove a genre from current user's artist profile.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: genreId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Genre removed., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile or Genre not found."}
+  /users/artist-profile/me/skills:
+    get:
+      tags: [UserService - Artist Profiles]
+      summary: Get skills for current user's artist profile.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: Skills list., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SkillSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile not found."}
+  /users/artist-profile/me/skills/add/{skillId}:
+    post:
+      tags: [UserService - Artist Profiles]
+      summary: Add a skill to current user's artist profile.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: skillId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Skill added., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile or Skill not found."}
+        '409': { $ref: '#/components/responses/ConflictError', description: "Skill limit exceeded."}
+  /users/artist-profile/me/skills/remove/{skillId}:
+    delete:
+      tags: [UserService - Artist Profiles]
+      summary: Remove a skill from current user's artist profile.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: skillId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Skill removed., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile or Skill not found."}
+  /users/artist-profile/{username}:
+    get:
+      tags: [UserService - Artist Profiles]
+      summary: Get artist profile by username.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: username, in: path, required: true, schema: { type: string }}]
+      responses:
+        '200': { description: Artist profile found., content: { application/json: { schema: { $ref: '#/components/schemas/ArtistProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Artist profile not found."}
+  /users/artist-profile/{username}/genres:
+    get:
+      tags: [UserService - Artist Profiles]
+      summary: Get genres for an artist profile by username.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: username, in: path, required: true, schema: { type: string }}]
+      responses:
+        '200': { description: List of genres., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User or Profile not found."}
+  /users/artist-profile/{username}/skills:
+    get:
+      tags: [UserService - Artist Profiles]
+      summary: Get skills for an artist profile by username.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: username, in: path, required: true, schema: { type: string }}]
+      responses:
+        '200': { description: List of skills., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/SkillSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User or Profile not found."}
+
+  # --- UserService - Producer Profile Endpoints ---
+  /users/producer-profile/me:
+    get:
+      tags: [UserService - Producer Profiles]
+      summary: Get current user's producer profile.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: Producer profile found., content: { application/json: { schema: { $ref: '#/components/schemas/ProducerProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Producer profile not found."}
+    put:
+      tags: [UserService - Producer Profiles]
+      summary: Create or update current user's producer profile.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileUpdateDto' }}}}
+      responses:
+        '200': { description: Profile created/updated., content: { application/json: { schema: { $ref: '#/components/schemas/ProducerProfileDetailDto' }}}}
+        '400': { description: "Bad Request (e.g. missing experience level)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User not found."}
+    patch:
+      tags: [UserService - Producer Profiles]
+      summary: Partially update current user's producer profile.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProfileUpdateDto' }}}}
+      responses:
+        '200': { description: Profile patched., content: { application/json: { schema: { $ref: '#/components/schemas/ProducerProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile not found."}
+  /users/producer-profile/me/genres:
+    get:
+      tags: [UserService - Producer Profiles]
+      summary: Get genres for current user's producer profile.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: Genres list., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile not found."}
+  /users/producer-profile/me/genres/add/{genreId}:
+    post:
+      tags: [UserService - Producer Profiles]
+      summary: Add a genre to current user's producer profile.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: genreId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Genre added., content: { application/json: { schema: { $ref: '#/components/schemas/ProducerProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile or Genre not found."}
+        '409': { $ref: '#/components/responses/ConflictError', description: "Genre limit exceeded."}
+  /users/producer-profile/me/genres/remove/{genreId}:
+    delete:
+      tags: [UserService - Producer Profiles]
+      summary: Remove a genre from current user's producer profile.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: genreId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Genre removed., content: { application/json: { schema: { $ref: '#/components/schemas/ProducerProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Profile or Genre not found."}
+  /users/producer-profile/{username}:
+    get:
+      tags: [UserService - Producer Profiles]
+      summary: Get producer profile by username.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: username, in: path, required: true, schema: { type: string }}]
+      responses:
+        '200': { description: Producer profile found., content: { application/json: { schema: { $ref: '#/components/schemas/ProducerProfileDetailDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Producer profile not found."}
+  /users/producer-profile/{username}/genres:
+    get:
+      tags: [UserService - Producer Profiles]
+      summary: Get genres for a producer profile by username.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: username, in: path, required: true, schema: { type: string }}]
+      responses:
+        '200': { description: List of genres., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/GenreSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User or Profile not found."}
+
+  # --- UserService - Genre & Skill Endpoints ---
+  /genres:
+    get:
+      tags: [UserService - Genres]
+      summary: Get all genres (paginated).
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string, example: "name,asc" }}
+      responses:
+        '200': { description: List of genres., content: { application/json: { schema: { $ref: '#/components/schemas/PageGenreSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /genres/add:
+    post:
+      tags: [UserService - Genres]
+      summary: Add a new genre (Admin only).
+      description: Requires 'client_admin' role.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/GenreDto' }}}}
+      responses:
+        '201': { description: Genre created., content: { application/json: { schema: { $ref: '#/components/schemas/GenreSummaryDto' }}}}
+        '400': { description: "Bad Request (invalid input)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError', description: "Genre name already exists."}
+  /genres/delete/{genreId}:
+    delete:
+      tags: [UserService - Genres]
+      summary: Delete a genre (Admin only).
+      description: Requires 'client_admin' role.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: genreId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: Genre deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  /skills:
+    get:
+      tags: [UserService - Skills]
+      summary: Get all skills (paginated).
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string, example: "name,asc" }}
+      responses:
+        '200': { description: List of skills., content: { application/json: { schema: { $ref: '#/components/schemas/PageSkillSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /skills/add:
+    post:
+      tags: [UserService - Skills]
+      summary: Add a new skill (Admin only).
+      description: Requires 'client_admin' role.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/SkillDto' }}}}
+      responses:
+        '201': { description: Skill created., content: { application/json: { schema: { $ref: '#/components/schemas/SkillSummaryDto' }}}}
+        '400': { description: "Bad Request (invalid input)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '409': { $ref: '#/components/responses/ConflictError', description: "Skill name already exists."}
+  /skills/delete/{skillId}:
+    delete:
+      tags: [UserService - Skills]
+      summary: Delete a skill (Admin only).
+      description: Requires 'client_admin' role.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: skillId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: Skill deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  # --- UserService - Interactions Endpoints ---
+  /interactions/me/connections/request/{addresseeId}:
+    post:
+      tags: [UserService - Interactions]
+      summary: Send a connection request to another user.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: addresseeId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '202': { description: Connection request sent successfully.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User/Addressee not found or not active."}
+        '409': { $ref: '#/components/responses/ConflictError', description: "Connection exists/pending or users blocked."}
+  /interactions/me/connections/accept/{requesterId}:
+    post:
+      tags: [UserService - Interactions]
+      summary: Accept a connection request.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: requesterId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Connection request accepted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Pending request not found or users not active."}
+  /interactions/me/connections/reject/{requesterId}:
+    delete:
+      tags: [UserService - Interactions]
+      summary: Reject a connection request.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: requesterId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: Connection request rejected.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Pending request not found."}
+  /interactions/me/connections/remove/{otherUserId}:
+    delete:
+      tags: [UserService - Interactions]
+      summary: Remove an existing connection.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: otherUserId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: Connection removed.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Accepted connection not found."}
+  /interactions/me/connections:
+    get:
+      tags: [UserService - Interactions]
+      summary: Get current user's connections (paginated).
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string }}
+      responses:
+        '200': { description: List of connections., content: { application/json: { schema: { $ref: '#/components/schemas/PageUserSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /interactions/me/connections/all:
+    get:
+      tags: [UserService - Interactions]
+      summary: Get all of current user's connections.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: List of all connections., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/UserSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /interactions/me/connections/requests/incoming:
+    get:
+      tags: [UserService - Interactions]
+      summary: Get pending incoming connection requests for current user.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string }}
+      responses:
+        '200': { description: List of incoming requests., content: { application/json: { schema: { $ref: '#/components/schemas/PageUserSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /interactions/me/connections/requests/outgoing:
+    get:
+      tags: [UserService - Interactions]
+      summary: Get pending outgoing connection requests from current user.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string }}
+      responses:
+        '200': { description: List of outgoing requests., content: { application/json: { schema: { $ref: '#/components/schemas/PageUserSummaryDto_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /interactions/me/blocks/block/{blockedId}:
+    post:
+      tags: [UserService - Interactions]
+      summary: Block a user.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: blockedId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: User blocked successfully.}
+        '400': { description: "Bad Request (e.g. cannot block oneself)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User to block or blocker not found/active."}
+  /interactions/me/blocks/unblock/{blockedId}:
+    delete:
+      tags: [UserService - Interactions]
+      summary: Unblock a user.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: blockedId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: User unblocked successfully.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User to unblock or blocker not found."}
+  /interactions/me/blocks:
+    get:
+      tags: [UserService - Interactions]
+      summary: Get users blocked by the current user.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string }}
+      responses:
+        '200': { description: List of blocked users., content: { application/json: { schema: { $ref: '#/components/schemas/PageUser_UserService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /interactions/me/status/{otherUserId}:
+    get:
+      tags: [UserService - Interactions]
+      summary: Get interaction status with another user.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: otherUserId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Interaction status retrieved., content: { application/json: { schema: { $ref: '#/components/schemas/InteractionStatus' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "User not found."}
+
+  # --- PROJECT SERVICE ENDPOINTS ---
+  /projects:
+    post:
+      tags: [ProjectService - Projects]
+      summary: Create a new project.
+      security: [{"bearerAuth": []}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectCreateDto' }}}}
+      responses:
+        '201': { description: Project created., content: { application/json: { schema: { $ref: '#/components/schemas/ProjectResponseDto' }}}}
+        '400': { description: "Bad Request (invalid input)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /projects/owned:
+    get:
+      tags: [ProjectService - Projects]
+      summary: Get projects owned by the authenticated user.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 10 }}
+        - { name: sort, in: query, schema: { type: string, example: "title,asc" }}
+      responses:
+        '200': { description: List of owned projects., content: { application/json: { schema: { $ref: '#/components/schemas/PageProjectResponseDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /projects/collaborating:
+    get:
+      tags: [ProjectService - Projects]
+      summary: Get projects where the authenticated user is a collaborator.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 10 }}
+        - { name: sort, in: query, schema: { type: string, example: "title,asc" }}
+      responses:
+        '200': { description: List of collaborating projects., content: { application/json: { schema: { $ref: '#/components/schemas/PageProjectResponseDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /projects/{projectId}:
+    get:
+      tags: [ProjectService - Projects]
+      summary: Get project details by ID.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Project details., content: { application/json: { schema: { $ref: '#/components/schemas/ProjectResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not owner or collaborator."}
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    put:
+      tags: [ProjectService - Projects]
+      summary: Update project information.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ProjectUpdateDto' }}}}
+      responses:
+        '200': { description: Project updated., content: { application/json: { schema: { $ref: '#/components/schemas/ProjectResponseDto' }}}}
+        '400': { description: "Bad Request." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    delete:
+      tags: [ProjectService - Projects]
+      summary: Delete a project.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: Project deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /projects/{projectId}/owner:
+    get:
+      tags: [ProjectService - Projects]
+      summary: Get the owner of a project.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Project owner details., content: { application/json: { schema: { $ref: '#/components/schemas/UserSummaryDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' } # Assuming only members can view
+        '403': { $ref: '#/components/responses/ForbiddenError' }     # Assuming only members can view
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /projects/{projectId}/collaborators:
+    get:
+      tags: [ProjectService - Projects]
+      summary: Get collaborators of a project.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 10 }}
+        - { name: sort, in: query, schema: { type: string }}
+      responses:
+        '200': { description: List of collaborators., content: { application/json: { schema: { $ref: '#/components/schemas/PageUserSummaryDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' } # Assuming only members can view
+        '403': { $ref: '#/components/responses/ForbiddenError' }     # Assuming only members can view
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /projects/{projectId}/collaborators/{collaboratorId}:
+    post:
+      tags: [ProjectService - Projects]
+      summary: Add a collaborator to a project.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: collaboratorId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: Collaborator added., content: { application/json: { schema: { $ref: '#/components/schemas/ProjectResponseDto' }}}}
+        '400': { description: "Bad Request (owner as collab, not connected)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project or user to add not found."}
+        '409': { $ref: '#/components/responses/ConflictError', description: "User already a collaborator."}
+    delete:
+      tags: [ProjectService - Projects]
+      summary: Remove a collaborator from a project.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: collaboratorId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '204': { description: Collaborator removed.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project or collaborator not found."}
+
+  # --- ProjectService - Tasks Endpoints ---
+  /projects/{projectId}/tasks:
+    post:
+      tags: [ProjectService - Tasks]
+      summary: Create a new task for the project.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskCreateDto' }}}}
+      responses:
+        '201': { description: Task created., content: { application/json: { schema: { $ref: '#/components/schemas/TaskResponseDto' }}}}
+        '400': { description: "Bad Request." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project or assigned user not found."}
+    get:
+      tags: [ProjectService - Tasks]
+      summary: Get all tasks for the project.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 50 }}
+        - { name: sort, in: query, schema: { type: string, example: "createdAt,desc" }}
+      responses:
+        '200': { description: List of tasks., content: { application/json: { schema: { $ref: '#/components/schemas/PageTaskResponseDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project not found."}
+  /projects/{projectId}/tasks/{taskId}:
+    get:
+      tags: [ProjectService - Tasks]
+      summary: Get task details by ID.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: Task details., content: { application/json: { schema: { $ref: '#/components/schemas/TaskResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member or task not in project."}
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    put:
+      tags: [ProjectService - Tasks]
+      summary: Update a task.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid }}
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/TaskUpdateDto' }}}}
+      responses:
+        '200': { description: Task updated., content: { application/json: { schema: { $ref: '#/components/schemas/TaskResponseDto' }}}}
+        '400': { description: "Bad Request." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Task, Project or assigned user not found."}
+    delete:
+      tags: [ProjectService - Tasks]
+      summary: Delete a task.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '204': { description: Task deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /projects/{projectId}/tasks/{taskId}/assign/{assigneeUserId}:
+    post:
+      tags: [ProjectService - Tasks]
+      summary: Assign a user to a task.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: assigneeUserId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: User assigned., content: { application/json: { schema: { $ref: '#/components/schemas/TaskResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Current user or assignee not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Task or assignee user not found."}
+  /projects/{projectId}/tasks/{taskId}/unassign:
+    delete:
+      tags: [ProjectService - Tasks]
+      summary: Remove a user from a task.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: taskId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: User unassigned., content: { application/json: { schema: { $ref: '#/components/schemas/TaskResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  # --- ProjectService - Milestones Endpoints ---
+  /projects/{projectId}/milestones:
+    post:
+      tags: [ProjectService - Milestones]
+      summary: Create a new milestone for the project.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MilestoneCreateDto' }}}}
+      responses:
+        '201': { description: Milestone created., content: { application/json: { schema: { $ref: '#/components/schemas/MilestoneResponseDto' }}}}
+        '400': { description: "Bad Request." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project not found."}
+    get:
+      tags: [ProjectService - Milestones]
+      summary: Get all milestones for the project.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 20 }}
+        - { name: sort, in: query, schema: { type: string, example: "dueDate,asc" }}
+      responses:
+        '200': { description: List of milestones., content: { application/json: { schema: { $ref: '#/components/schemas/PageMilestoneResponseDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project not found."}
+  /projects/{projectId}/milestones/{milestoneId}:
+    get:
+      tags: [ProjectService - Milestones]
+      summary: Get milestone details by ID.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: milestoneId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: Milestone details., content: { application/json: { schema: { $ref: '#/components/schemas/MilestoneResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member or milestone not in project."}
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    put:
+      tags: [ProjectService - Milestones]
+      summary: Update a milestone.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: milestoneId, in: path, required: true, schema: { type: string, format: uuid }}
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/MilestoneUpdateDto' }}}}
+      responses:
+        '200': { description: Milestone updated., content: { application/json: { schema: { $ref: '#/components/schemas/MilestoneResponseDto' }}}}
+        '400': { description: "Bad Request." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    delete:
+      tags: [ProjectService - Milestones]
+      summary: Delete a milestone.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: milestoneId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '204': { description: Milestone deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  # --- ProjectService - Budget & Expenses Endpoints ---
+  /projects/{projectId}/budget:
+    post:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Create the project budget.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetCreateDto' }}}}
+      responses:
+        '201': { description: Budget created., content: { application/json: { schema: { $ref: '#/components/schemas/BudgetResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project not found."}
+        '409': { $ref: '#/components/responses/ConflictError', description: "Budget already exists."}
+    get:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Get project budget details.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Budget details., content: { application/json: { schema: { $ref: '#/components/schemas/BudgetResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Budget not found."}
+    put:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Update project budget.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/BudgetUpdateDto' }}}}
+      responses:
+        '200': { description: Budget updated., content: { application/json: { schema: { $ref: '#/components/schemas/BudgetResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Budget not found."}
+    delete:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Delete project budget.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '204': { description: Budget deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "Not project owner."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Budget not found."}
+  /projects/{projectId}/budget/remaining:
+    get:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Get remaining budget amount.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: Remaining budget., content: { application/json: { schema: { $ref: '#/components/schemas/RemainingBudgetDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Budget not found."}
+  /projects/{projectId}/budget/expenses:
+    post:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Add an expense to the budget.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ExpenseCreateDto' }}}}
+      responses:
+        '201': { description: Expense added., content: { application/json: { schema: { $ref: '#/components/schemas/ExpenseResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Budget not found."}
+    get:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Get all expenses for the project budget.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: page, in: query, schema: { type: integer, default: 0 }}
+        - { name: size, in: query, schema: { type: integer, default: 50 }}
+        - { name: sort, in: query, schema: { type: string, example: "date,desc" }}
+      responses:
+        '200': { description: List of expenses., content: { application/json: { schema: { $ref: '#/components/schemas/PageExpenseResponseDto_ProjectService' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Budget not found."}
+  /projects/{projectId}/budget/expenses/{expenseId}:
+    get:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Get specific expense details.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: expenseId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: Expense details., content: { application/json: { schema: { $ref: '#/components/schemas/ExpenseResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    put:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Update an expense.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: expenseId, in: path, required: true, schema: { type: string, format: uuid }}
+      requestBody: { required: true, content: { application/json: { schema: { $ref: '#/components/schemas/ExpenseUpdateDto' }}}}
+      responses:
+        '200': { description: Expense updated., content: { application/json: { schema: { $ref: '#/components/schemas/ExpenseResponseDto' }}}}
+        '400': { description: "Bad Request." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+    delete:
+      tags: [ProjectService - Budget & Expenses]
+      summary: Remove an expense.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: expenseId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '204': { description: Expense removed.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+
+  # --- ProjectService - Files Endpoints ---
+  /projects/{projectId}/files:
+    post:
+      tags: [ProjectService - Files]
+      summary: Upload a project file.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                file: { type: string, format: binary, description: "The file to upload." }
+                description: { type: string, nullable: true, description: "Optional description for the file." }
+      responses:
+        '201': { description: File uploaded., content: { application/json: { schema: { $ref: '#/components/schemas/ProjectFileResponseDto' }}}}
+        '400': { description: "Bad Request (e.g. invalid file type, size)." }
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError', description: "User not project member."}
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project not found."}
+    get:
+      tags: [ProjectService - Files]
+      summary: List latest versions of all files for the project.
+      security: [{"bearerAuth": []}]
+      parameters: [{ name: projectId, in: path, required: true, schema: { type: string, format: uuid }}]
+      responses:
+        '200': { description: List of files., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ProjectFileResponseDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /projects/{projectId}/files/{fileId}/metadata:
+    get:
+      tags: [ProjectService - Files]
+      summary: Get metadata for a specific file.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: fileId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: File metadata., content: { application/json: { schema: { $ref: '#/components/schemas/ProjectFileResponseDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+  /projects/{projectId}/files/{fileId}/download-url:
+    get:
+      tags: [ProjectService - Files]
+      summary: Get a pre-signed S3 download URL for a file.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: fileId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: Download URL generated., content: { application/json: { schema: { $ref: '#/components/schemas/FileDownloadDto' }}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError', description: "Error generating URL (e.g. S3 issue, missing S3 info)." }
+  /projects/{projectId}/files/{fileId}:
+    delete:
+      tags: [ProjectService - Files]
+      summary: Delete a file (specific version).
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: fileId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '204': { description: File deleted.}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError' }
+        '500': { $ref: '#/components/responses/InternalServerError', description: "Deletion failed." }
+  /projects/{projectId}/files/versions:
+    get:
+      tags: [ProjectService - Files]
+      summary: List all versions of a file by its original name.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: projectId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: filename, in: query, required: true, schema: { type: string, description: "Original filename to search versions for." }}
+      responses:
+        '200': { description: List of file versions., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ProjectFileResponseDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+        '403': { $ref: '#/components/responses/ForbiddenError' }
+        '404': { $ref: '#/components/responses/NotFoundError', description: "Project not found."}
+
+  # --- CHAT SERVICE REST ENDPOINTS ---
+  /chats/users:
+    get:
+      tags: [ChatService - REST API]
+      summary: Find all currently online users in ChatService.
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: List of online users., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ChatServiceUserDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /chats/me:
+    get:
+      tags: [ChatService - REST API]
+      summary: Get list of users the current user has chats with (connections).
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: List of chat partners., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ChatServiceUserDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /chats/summary:
+    get:
+      tags: [ChatService - REST API]
+      summary: Get chat summaries for the current user (includes unread counts).
+      security: [{"bearerAuth": []}]
+      responses:
+        '200': { description: List of chat summaries., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ChatSummaryDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
+  /messages/{senderId}/{recipientId}:
+    get:
+      tags: [ChatService - REST API]
+      summary: Find chat messages between two users.
+      security: [{"bearerAuth": []}]
+      parameters:
+        - { name: senderId, in: path, required: true, schema: { type: string, format: uuid }}
+        - { name: recipientId, in: path, required: true, schema: { type: string, format: uuid }}
+      responses:
+        '200': { description: List of chat messages., content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/ChatMessageDto' }}}}}
+        '401': { $ref: '#/components/responses/UnauthorizedError' }
