@@ -62,5 +62,5 @@ To run the entire SPSHPAU backend ecosystem, you'll generally need:
 To clone this super-repository along with all its submodules, use the `--recurse-submodules` flag:
 
 ```bash
-git clone --recurse-submodules <URL_OF_THIS_SUPER_REPOSITORY>
-cd spshpau-backend-super
+git clone --recurse-submodules <URL_OF_THIS_REPOSITORY>
+cd spshpau-backend
